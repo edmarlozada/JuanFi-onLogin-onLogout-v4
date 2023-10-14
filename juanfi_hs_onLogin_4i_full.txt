@@ -2,3 +2,156 @@
 # by: Chloe Renae & Edmar Lozada
 # ------------------------------
 
+# Telegram Notification: 0=disable or 1=enable
+local isTelegram 0
+# Telegram Token
+local iTGBotToken "xxxxxxxxxx:xxxxxxxxxxxxx-xxxxxxxxxxxxxxx-xxxxx"
+# Telegram Group Chat ID
+local iTGrpChatID "xxxxxxxxxxxxxx"
+
+# Get User Data
+local iUser $user
+local iDInt $interface
+local iDMac $"mac-address"
+local aUser [/ip hotspot user get [find name=$user]]
+local aNote [toarray ($aUser->"comment")]
+local iValidity [totime ($aNote->0)]
+local iExtUCode ($aNote->2)
+local iUserTime ($aUser->"limit-uptime")
+
+# Check Valid Entry
+if (($iValidity>=0) and ($iExtUCode=0 or $iExtUCode=1) and ($iUserTime>0)) do={
+  local eReplace do={
+    local iRet
+    for i from=0 to=([len $1]-1) do={
+      local x [pick $1 $i]
+      if ($x = $2) do={set x $3}
+      set iRet ($iRet . $x)
+    }; return $iRet
+  }
+  local iFHotspot [/ip hotspot profile get [.. get [find interface=$iDInt] profile] html-directory]
+  local iFileName [$eReplace $iDMac ":" ""]
+  local iSalesAmt [tonum ($aNote->1)]
+  local iVendoNme ($aNote->3)
+  local iUsrExist [/system scheduler find name=$iUser]
+
+# EXTEND USER MODULE
+  if ($iUsrExist!="") do={
+    local iInterval [/system scheduler get [find name=$iUser] interval]
+    if (($iValidity != 0s) and (($iValidity + $iInterval) < $iUserTime)) do={
+      set iInterval $iUserTime
+    } else={
+      set iInterval ($iValidity + $iInterval)
+    }
+    log warning "( $user ) ===[ EXTEND USER ($interface) ]==="
+    log warning "( $user ) iUserTime=[$iUserTime] iValidity=[$iValidity] iInterval=[$iInterval] iSalesAmt=[$iSalesAmt] iDMac=[$iDMac]"
+    /system scheduler set [find name=$user] interval=$iInterval
+    /ip hotspot user set [find name=$user] comment=""
+  }
+
+# ADDNEW USER MODULE
+  do {
+  if ($iUsrExist="") do={
+    local iInterval $iValidity
+    if (($iValidity != 0s) and ($iValidity < $iUserTime)) do={
+      set iInterval $iUserTime
+    }
+    log warning "( $user ) ===[ ADDNEW USER ($interface) ]==="
+    log warning "( $user ) iUserTime=[$iUserTime] iValidity=[$iValidity] iInterval=[$iInterval] iSalesAmt=[$iSalesAmt] iDMac=[$iDMac]"
+    /system scheduler add name=$iUser interval=$iInterval \
+    on-event=("# EXPIRE ( $user ) #\r\n".\
+              "do {\r\n".\
+              "  log warning \"( $user ) =====[ EXPIRE USER (Validity) ]=====\"\r\n".\
+              "  /ip hotspot active remove [find user=\"$iUser\"]\r\n".\
+              "  /ip hotspot cookie remove [find user=\"$iUser\"]\r\n".\
+              "  /ip hotspot cookie remove [find mac-address=\"$iDMac\"]\r\n".\
+              "  /system scheduler  remove [find name=\"$iUser\"]\r\n".\
+              "  /ip hotspot user   remove [find name=\"$iUser\"]\r\n".\
+              "  if ([/file find name=\"$iFHotspot/data/$iFileName.txt\"]!=\"\") do={\r\n".\
+              "    /file remove [find name=\"$iFHotspot/data/$iFileName.txt\"]\r\n".\
+              "  } else={log error \"( $user ) SCHEDULER ERROR! [$iFHotspot/data/$iFileName.txt] => MISSING!\"}\r\n".\
+              "} on-error={log error \"( $user ) ONLOGOUT ERROR! Expire User Module\"}\r\n".\
+              "# END #\r\n")
+    local x 10;while (($x>0) and ([/system scheduler find name=$iUser]="")) do={set x ($x-1);delay 1s}
+    # Cancel user-login if user-scheduler MISSING!
+    if ([/system scheduler find name=$iUser]="") do={
+      log error "( $user ) ONLOGIN ERROR! /system scheduler [$user] => MISSING!"
+      /ip hotspot active remove [find user=$iUser]
+      /ip hotspot cookie remove [find user=$iUser]
+      /ip hotspot cookie remove [find mac-address=$iDMac]
+      return
+    }
+    /ip hotspot user set [find name=$user] comment=""
+  }
+  } on-error={log error "( $user ) ONLOGIN ERROR! AddNew User Module"}
+
+# AutoCreate Data Folder if missing!
+  if ([/file find name="$iFHotspot"]!="") do={
+    if ([/file find name="$iFHotspot/data"]="") do={
+      log error "( $user ) ONLOGIN: /file [$iFHotspot/data/] => AUTOCREATE!"
+      do { /tool fetch dst-path=("$iFHotspot/data/.") url="https://127.0.0.1/" } on-error={ }
+      local x 10;while (($x>0) and ([/file find name="$iFHotspot/data"]="")) do={set x ($x-1);delay 1s}
+    }
+  } else={log error "( $user ) ONLOGIN ERROR! /file [$iFHotspot] => MISSING!"}
+# Create User Data File
+  local iValidUntil [/system scheduler get [find name=$iUser] next-run]
+  if ([/file find name="$iFHotspot/data"]!="") do={
+    /file print file="$iFHotspot/data/$iFileName.txt" where name="$iFileName.txt"
+    local x 10;while (($x>0) and ([/file find name="$iFHotspot/data/$iFileName.txt"]="")) do={set x ($x-1);delay 1s}
+    if ([/file find name="$iFHotspot/data/$iFileName.txt"]!="") do={
+      /file set "$iFHotspot/data/$iFileName" contents="$iUser#$iValidUntil"
+    } else={log error "( $user ) ONLOGIN ERROR! /file [$iFHotspot/data/$iFileName.txt] => MISSING!"}
+  } else={log error "( $user ) ONLOGIN ERROR! /file [$iFHotspot/data] => MISSING!"}
+
+# AutoCreate todayincome/monthlyincome if missing!
+  if ([/system script find name=todayincome]="") do={
+    log error "( $user ) ONLOGIN ERROR! /system script [todayincome] => AUTOCREATE!"
+    /system script add name=todayincome source="0" comment="Sales Daily JuanFi ( TOTAL )";
+    local x 10;while (($x>0) and ([/system script find name=todayincome]="")) do={set x ($x-1);delay 1s}
+  }
+  if ([/system script find name=monthlyincome]="") do={
+    log error "( $user ) ONLOGIN ERROR! /system script [monthlyincome] => AUTOCREATE!"
+    /system script add name=monthlyincome source="0" comment="Sales Monthly JuanFi ( TOTAL )"
+    local x 10;while (($x>0) and ([/system script find name=monthlyincome]="")) do={set x ($x-1);delay 1s}
+  }
+# Update Today Sales
+  local iDailySales
+  if ([/system script find name=todayincome]!="") do={
+    local iSaveAmt [tonum [/system script get [find name=todayincome] source]]
+    set iDailySales ($iSalesAmt + $iSaveAmt)
+    /system script set [find name=todayincome] source="$iDailySales"
+  } else={log error "( $user ) ONLOGIN ERROR! /system script [todayincome] => MISSING!"}
+# Update Monthly Sales
+  local iMonthSales
+  if ([/system script find name=monthlyincome]!="") do={
+    local iSaveAmt [tonum [/system script get [find name=monthlyincome] source]]
+    set iMonthSales ( $iSalesAmt + $iSaveAmt )
+    /system script set [find name=monthlyincome] source="$iMonthSales"
+  } else={log error "( $user ) ONLOGIN ERROR! /system script [monthlyincome] => MISSING!"}
+
+# Telegram Reporting
+  if ($isTelegram=1) do={
+    local iDateBeg [/system clock get date]
+    local iTimeBeg [/system clock get time]
+    local iUActive [/ip hotspot active print count-only]
+    local iDevName [/ip dhcp-server lease get [find mac-address=$iDMac] host-name]
+    local iMessage ("<<== $iVendoNme ==>>%0A".\
+                    "Device: $iDevName %0A".\
+                    "Voucher: $user %0A".\
+                    "IP: $address %0A".\
+                    "MAC: $iDMac %0A".\
+                    "Extended: $iExtUCode %0A".\
+                    "Total Time: $iUserTime %0A".\
+                    "Valid Until: $iValidUntil %0A".\
+                    "Active Users: $iUActive %0A %0A".\
+                    "Date: $iDateBeg $iTimeBeg %0A".\
+                    "Sale Amount: $iSalesAmt %0A".\
+                    "Total Today: $iDailySales %0A".\
+                    "Total Month: $iMonthSales %0A".\
+                    "<<=====================>>")
+    local iMessage [$eReplace ($iMessage) " " "%20"]
+    /tool fetch url="https://api.telegram.org/bot$iTGBotToken/sendmessage?chat_id=$iTGrpChatID&text=$iMessage" keep-result=no
+  }
+
+}
+

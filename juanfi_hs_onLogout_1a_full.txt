@@ -13,8 +13,9 @@ if (($cause="session timeout") or ($cause="traffic limit reached")) do={
       set iRet ($iRet . $x)
     }; return $iRet
   }
+  local iDInt $interface
   local iDMac $"mac-address"
-  local iFHotspot [/ip hotspot profile get [.. get [find interface=$interface] profile] html-directory]
+  local iFHotspot [/ip hotspot profile get [.. get [find interface=$iDInt] profile] html-directory]
   local iFileName [$eReplace $iDMac ":" ""]
   if ($cause~"session timeout") do={ log warning "( $user ) =====[ EXPIRE USER (Time Limit) ]=====" }
   if ($cause~"fic limit reach") do={ log warning "( $user ) =====[ EXPIRE USER (Data Limit) ]=====" }
