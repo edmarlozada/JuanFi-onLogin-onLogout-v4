@@ -3,7 +3,7 @@
 # ------------------------------
 
 # Get User Data
-local iUser $username
+local iUser $user
 local iDInt $interface
 local iDMac $"mac-address"
 local aUser [/ip hotspot user get [find name=$user]]
