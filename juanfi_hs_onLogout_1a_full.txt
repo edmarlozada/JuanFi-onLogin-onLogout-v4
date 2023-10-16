@@ -1,0 +1,31 @@
+# juanfi_hs_onLogout_1a_full
+# by: Chloe Renae & Edmar Lozada
+# ------------------------------
+
+# session timeout = limit-uptime reached
+# traffic limit reached = limit-bytes reached
+if (($cause="session timeout") or ($cause="traffic limit reached")) do={
+  local eReplace do={
+    local iRet
+    for i from=0 to=([len $1]-1) do={
+      local x [pick $1 $i]
+      if ($x = $2) do={set x $3}
+      set iRet ($iRet . $x)
+    }; return $iRet
+  }
+  local iUser "$user"
+  local iUInt $interface
+  local iUMac $"mac-address"
+  local iHotSpot [/ip hotspot profile get [.. get [find interface=$iUInt] profile] html-directory]
+  local iUsrFile [$eReplace $iUMac ":" ""]
+  if ($cause~"session timeout") do={ log warning "EXPIRE USER ( TimeLimit ) => user=[$user] mac=[$iUMac]" }
+  if ($cause~"fic limit reach") do={ log warning "EXPIRE USER ( DataLimit ) => user=[$user] mac=[$iUMac]" }
+  /ip hotspot active remove [find user=$iUser]
+  /ip hotspot cookie remove [find user=$iUser]
+  /ip hotspot cookie remove [find mac-address=$iUMac]
+  /system scheduler  remove [find name=$iUser]
+  /ip hotspot user   remove [find name=$iUser]
+  if ([/file find name="$iHotSpot/data/$iUsrFile.txt"]!="") do={
+    /file remove "$iHotSpot/data/$iUsrFile.txt"
+  } else={log error "( $user ) ONLOGOUT ERROR! [$iHotSpot/data/$iUsrFile.txt] => MISSING!"}
+}

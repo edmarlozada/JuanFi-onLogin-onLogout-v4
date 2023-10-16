@@ -1,0 +1,83 @@
+# juanfi_hs_onLogin_4k_lite
+# by: Chloe Renae & Edmar Lozada
+# ------------------------------
+
+# Get User Data
+local iUser $user
+local iUInt $interface
+local iUMac $"mac-address"
+local aUser [/ip hotspot user get [find name=$user]]
+local aNote [toarray ($aUser->"comment")]
+local iValidity [totime ($aNote->0)]
+local iUExtCode ($aNote->2)
+local iUserTime ($aUser->"limit-uptime")
+
+# Check Valid Entry
+if (($iValidity>=0) and ($iUExtCode=0 or $iUExtCode=1) and ($iUserTime>0)) do={
+  local eReplace do={
+    local iRet
+    for i from=0 to=([len $1]-1) do={
+      local x [pick $1 $i]
+      if ($x = $2) do={set x $3}
+      set iRet ($iRet . $x)
+    }; return $iRet
+  }
+  local iHotSpot [/ip hotspot profile get [.. get [find interface=$iUInt] profile] html-directory]
+  local iUsrFile [$eReplace $iUMac ":" ""]
+  local iNewUser  ([/system scheduler find name=$iUser]="")
+
+# EXTEND USER MODULE
+  if ($iNewUser=false) do={
+    local iInterval [/system scheduler get [find name=$iUser] interval]
+    if (($iValidity != 0s) and (($iValidity + $iInterval) < $iUserTime)) do={
+      set iInterval $iUserTime
+    } else={
+      set iInterval ($iValidity + $iInterval)
+    }
+    /system scheduler set [find name=$user] interval=$iInterval
+    /ip hotspot user set [find name=$user] comment=""
+  }
+
+# ADDNEW USER MODULE
+  if ($iNewUser=true) do={
+    local iInterval $iValidity
+    if (($iValidity != 0s) and ($iValidity < $iUserTime)) do={
+      set iInterval $iUserTime
+    }
+    /system scheduler add name=$iUser interval=$iInterval \
+    on-event=("# Expire User #\r\n".\
+              "do {\r\n".\
+              "  /ip hotspot active remove [find user=\"$iUser\"]\r\n".\
+              "  /ip hotspot cookie remove [find user=\"$iUser\"]\r\n".\
+              "  /ip hotspot cookie remove [find mac-address=\"$iUMac\"]\r\n".\
+              "  /system scheduler  remove [find name=\"$iUser\"]\r\n".\
+              "  /ip hotspot user   remove [find name=\"$iUser\"]\r\n".\
+              "  if ([/file find name=\"$iHotSpot/data/$iUsrFile.txt\"]!=\"\") do={\r\n".\
+              "    /file remove [find name=\"$iHotSpot/data/$iUsrFile.txt\"]\r\n".\
+              "  } else={log error \"( $user ) SCHEDULER ERROR! [$iHotSpot/data/$iUsrFile.txt] => MISSING!\"}\r\n".\
+              "} on-error={log error \"( $user ) ONLOGOUT ERROR! Expire User Module\"}\r\n".\
+              "# END #\r\n")
+    local x 10;while (($x>0) and ([/system scheduler find name=$iUser]="")) do={set x ($x-1);delay 1s}
+    # Cancel user-login if user-scheduler MISSING!
+    if ([/system scheduler find name=$iUser]="") do={
+      log error "( $user ) ONLOGIN ERROR! /system scheduler [$user] => MISSING!"
+      /ip hotspot active remove [find user=$iUser]
+      /ip hotspot cookie remove [find user=$iUser]
+      /ip hotspot cookie remove [find mac-address=$iUMac]
+      return
+    }
+    /ip hotspot user set [find name=$user] comment=""
+  }
+
+# Create User Data File
+  local iValidUntil [/system scheduler get [find name=$iUser] next-run]
+  if ([/file find name="$iHotSpot/data"]!="") do={
+    /file print file="$iHotSpot/data/$iUsrFile.txt" where name="$iUsrFile.txt"
+    local x 10;while (($x>0) and ([/file find name="$iHotSpot/data/$iUsrFile.txt"]="")) do={set x ($x-1);delay 1s}
+    if ([/file find name="$iHotSpot/data/$iUsrFile.txt"]!="") do={
+      /file set "$iHotSpot/data/$iUsrFile" contents="$user#$iValidUntil"
+    } else={log error "( $user ) ONLOGIN ERROR! /file [$iHotSpot/data/$iUsrFile.txt] => MISSING!"}
+  } else={log error "( $user ) ONLOGIN ERROR! /file [$iHotSpot/data] => MISSING!"}
+
+}
+
