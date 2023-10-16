@@ -1,4 +1,4 @@
-# juanfi_hs_onLogin_4k_full
+# juanfi_hs_onLogin_4k_normal
 # by: Chloe Renae & Edmar Lozada
 # ------------------------------
 
@@ -49,7 +49,6 @@ if (($iValidity>=0) and ($iUExtCode=0 or $iUExtCode=1) and ($iUserTime>0)) do={
   }
 
 # ADDNEW USER MODULE
-  do {
   if ($iNewUser=true) do={
     local iInterval $iValidity
     if (($iValidity != 0s) and ($iValidity < $iUserTime)) do={
@@ -81,16 +80,7 @@ if (($iValidity>=0) and ($iUExtCode=0 or $iUExtCode=1) and ($iUserTime>0)) do={
     }
     /ip hotspot user set [find name=$user] comment=""
   }
-  } on-error={log error "( $user ) ONLOGIN ERROR! AddNew User Module"}
 
-# AutoCreate Data Folder if missing!
-  if ([/file find name="$iHotSpot"]!="") do={
-    if ([/file find name="$iHotSpot/data"]="") do={
-      log error "( $user ) ONLOGIN: /file [$iHotSpot/data/] => AUTOCREATE!"
-      do { /tool fetch dst-path=("$iHotSpot/data/.") url="https://127.0.0.1/" } on-error={ }
-      local x 10;while (($x>0) and ([/file find name="$iHotSpot/data"]="")) do={set x ($x-1);delay 1s}
-    }
-  } else={log error "( $user ) ONLOGIN ERROR! /file [$iHotSpot] => MISSING!"}
 # Create User Data File
   local iValidUntil [/system scheduler get [find name=$iUser] next-run]
   if ([/file find name="$iHotSpot/data"]!="") do={
@@ -101,17 +91,6 @@ if (($iValidity>=0) and ($iUExtCode=0 or $iUExtCode=1) and ($iUserTime>0)) do={
     } else={log error "( $user ) ONLOGIN ERROR! /file [$iHotSpot/data/$iUsrFile.txt] => MISSING!"}
   } else={log error "( $user ) ONLOGIN ERROR! /file [$iHotSpot/data] => MISSING!"}
 
-# AutoCreate todayincome/monthlyincome if missing!
-  if ([/system script find name=todayincome]="") do={
-    log error "( $user ) ONLOGIN ERROR! /system script [todayincome] => AUTOCREATE!"
-    /system script add name=todayincome source="0" comment="Sales Daily JuanFi ( TOTAL )";
-    local x 10;while (($x>0) and ([/system script find name=todayincome]="")) do={set x ($x-1);delay 1s}
-  }
-  if ([/system script find name=monthlyincome]="") do={
-    log error "( $user ) ONLOGIN ERROR! /system script [monthlyincome] => AUTOCREATE!"
-    /system script add name=monthlyincome source="0" comment="Sales Monthly JuanFi ( TOTAL )"
-    local x 10;while (($x>0) and ([/system script find name=monthlyincome]="")) do={set x ($x-1);delay 1s}
-  }
 # Update Today Sales
   local iDailySales
   if ([/system script find name=todayincome]!="") do={
